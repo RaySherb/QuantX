@@ -47,7 +47,13 @@ sig <- Lag(ifelse(SPY.MACD$macd > SPY.MACD$signal, 1, 0))
 
 # Step 4: The trading rules/equity curve
 ###############################################################################
-
+ret <- ROC(Cl(SPY))*sig
+ret <- ret['2017-06-02/2021-04-20']
+eq <- exp(cumsum(ret))
+plot(eq)
 
 # Step 5: Evaluate strategy performance
 ###############################################################################
+table.Drawdowns(ret, top=10)
+table.DownsideRisk(ret)
+charts.PerformanceSummary(ret)
