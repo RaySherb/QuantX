@@ -22,3 +22,4 @@ plot(eq)
 table.Drawdowns(ret, top=10)
 table.DownsideRisk(ret)
 charts.PerformanceSummary(ret)
+

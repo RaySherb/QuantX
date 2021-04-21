@@ -1,16 +1,22 @@
-library(quantmod)
-library(tidyverse)
+# Load libraries
+require(quantmod)
+require(PerformanceAnalytics)
 
-# Load data
-#############################################################################
-# start date 
+# Step 1: get the data
+###############################################################################
+# Start date
 dt <- '2017-2-1'
+# SPY is initial ticker to generalize algos for
 SPY <- getSymbols.yahoo('SPY', from=dt, periodicity = 'daily', auto.assign=F)
+# Rename columns
 names(SPY) <- c('Open', 'High', 'Low', 'Close', 'Volume', 'Adjusted')
+# Verify no missing data
 colSums(is.na(SPY))
-
-# Adjust for Splits & Dividends
-#############################################################################
+# Visualize difference between close and adjusted close
+chartSeries(SPY$Close, type="line")
+addTA(SPY$Adjusted, on=1)
+addTA(SPY$Volume)
+# Adjust for splits & dividends
 SPY$Mult <- SPY$Adjusted/SPY$Close
 SPY$Price <- SPY$Close
 SPY$OpenPrice <- SPY$Open
@@ -20,60 +26,28 @@ SPY$Low <- SPY$Low*SPY$Mult
 SPY$Close <- SPY$Adjusted
 SPY$Adjusted <- NULL
 
-# Indicators
-#############################################################################
-# SMA (simple moving average)
-#--------------------------------------------------------------
-n <- 20
-SPY$SMA20 <- rollapply(SPY[,'Close'],
-                             width = n,
-                             FUN = mean,
-                             by.column = TRUE,
-                             fill = NA,
-                             align = 'right')
+# Step 2: Create indicators (TTR package included in quantmod)
+###############################################################################
+SPY.MACD <- MACD(SPY$Close)
+SPY.MACD[is.na(SPY.MACD)] <- 0
+# Plot indicator w/ subplot of price
+chart_Series(SPY.MACD$macd)
+add_TA(SPY.MACD$signal, col='blue', on=1)
+add_TA(SPY$Close)
 
-# Bollinger Bands (Same window size as SMA)
-#--------------------------------------------------------------
-SPY$sd <- rollapply(SPY[,'Close'],
-                          width = n,
-                          FUN = sd,
-                          by.column = TRUE,
-                          fill = NA,
-                          align = 'right')
-SPY$UBB <- SPY$SMA20 + 2*SPY$sd
-SPY$LBB <- SPY$SMA20 - 2*SPY$sd
+# Step 3: Construct your trading rule
+###############################################################################
+# If macd is above signal then sig = 1, else sig = 0
+sig <- Lag(ifelse(SPY.MACD$macd > SPY.MACD$signal, 1, 0))
+# If sig = 1 then buy and hold, else sell
 
-# MACD (Moving average convergence divergence oscillator)
-#--------------------------------------------------------------
-n1 <- 5
-n2 <- 34
-SPY$MACD <- rollapply(SPY[,'Close'],
-                      width = n2,
-                      FUN = function(v){mean(v[(n2-n1+1):n2])-mean(v)},
-                      by.column = TRUE,
-                      fill = NA,
-                      align = 'right')
 
-# Rolling Sharpe Ratio (20-days)
-#--------------------------------------------------------------
-SPY$Sharpe20 <- SPY$SMA20/SPY$sd
 
-# Plot
-#############################################################################
-fortify.zoo(SPY) %>% ggplot(aes(Index))+
-  geom_line(aes(y=Close))+
-  geom_line(aes(y=UBB), color='red')+
-  geom_line(aes(y=LBB), color='red')
 
-# Strats
-#############################################################################
 
-c <- 5000 # Uninvested Cash
-k <- 0 # Number of positions held
-K <- 10 # Maximum positions held
+# Step 4: The trading rules/equity curve
+###############################################################################
 
-# Buy at positive cross-over
-SPY$buy <- ifelse(SPY$MACD > 0 & Lag(SPY$MACD) < 0, 1, 0)
-# Sell at negative Cross-over
-SPY$sell <- ifelse(SPY$MACD < 0 & Lag(SPY$MACD) > 0, -1, 0)
-#pg 74/217
+
+# Step 5: Evaluate strategy performance
+###############################################################################
