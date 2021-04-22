@@ -49,48 +49,44 @@ add_TA(graph$Close)
 ###############################################################################
 # If, at close, the macd is above signal then sig = 1, else sig = 0
 SPY$sig <- ifelse(SPY$macd > SPY$signal, 1, 0)
-# Bullish Crossover
-SPY.MACD$bull <- ifelse(SPY.MACD$sig == 1 & stats::lag(SPY.MACD$sig) == 0, 1, 0) #stats::lag is required due to dplyr::lag causing error
-# Bearish Crossover
-SPY.MACD$bear <- ifelse(SPY.MACD$sig == 0 & stats::lag(SPY.MACD$sig) == 1, -1, 0)
-# Combine Crossovers
-SPY.MACD$cross <- SPY.MACD$bull + SPY.MACD$bear
-# Erase extra columns
-SPY.MACD$bull <- NULL
-SPY.MACD$bear <- NULL
+# If today crossed over, give the direction
+SPY <- SPY %>% mutate(cross = ifelse(sig==1 & lag(sig==0), 1,
+                                     ifelse(sig==0 & lag(sig)==1, -1, 0)))
 
-
-# Attempt 3
-#---------------------------------------------------------
-# Zoo/xts is hard to work with. Temporary Change to tibble/data.frame for manipulation
-
-
-
-
-# Attempt 2
-#---------------------------------------------------------
-# https://stackoverflow.com/questions/28886253/dplyr-mutate-in-zoo-object
-SPY.MACD$cash <- 5000
-SPY.MACD$position <- 0
-
+# Initial Conditions
+SPY$cash <- 5000
+SPY$position <- 0
+# Functions for buying and selling
 sell.cash <- function(open, position, cash){cash = cash + (position * open)}
-buy.position <- function(open, cash){position = round(cash/open)}
+buy.position <- function(open, cash){position = round(cash/open)-1}
 buy.cash <- function(open, position, cash){cash = cash - (position * open)}
+# Trigger that will execute a function
+SPY <- SPY %>% mutate(trigger = lag(cross))
+# Update position at trigger
+for(i in 3:nrow(SPY)){
+  if(SPY$trigger[i]==1){
+    SPY$position[i] <- buy.position(SPY$OpenPrice[i], SPY$cash[i-1])   
+  } else if(SPY$trigger[i]==-1){
+    SPY$position[i] <- 0
+    } else SPY$position[i] <- SPY$position[i-1]
+}
+# Update cash at trigger
+for(i in 3:nrow(SPY)){
+  if(SPY$trigger[i]==1){
+    SPY$cash[i] <- buy.cash(SPY$OpenPrice[i], SPY$position[i], SPY$cash[i-1])
+  } else if (SPY$trigger[i]==-1){
+    SPY$cash[i] <- sell.cash(SPY$OpenPrice[i], SPY$position[i-1], SPY$cash[i-1])
+    } else SPY$cash[i] <- SPY$cash[i-1]
+}
 
-SPY.MACD <- SPY.MACD %>% transform(trigger = lag(cross))
+# Hodl
+startPrice <- SPY$OpenPrice[1]
+startPosition <- round(5000/startPrice)-1
+startCash <- 5000 - (startPosition*startPrice)
+SPY <- SPY %>% mutate(assets=(position*Close)+cash,
+                      hodl=(Close*startPosition)+startCash)
 
-SPY.MACD <- SPY.MACD %>% transform(position = ifelse(trigger==1,
-                                                     buy.position(SPY$Open, stats::lag(cash)),
-                                                     ifelse(trigger==0,
-                                                            stats::lag(position),
-                                                            0)))
-
-
-SPY.MACD <- SPY.MACD %>% transform(cash = ifelse(trigger==1,
-                                                 buy.cash(SPY$Open, position, cash),
-                                                 ifelse(trigger==-1,
-                                                        sell.cash(SPY$Open, stats::lag(position), cash),
-                                                        stats::lag(cash))))
-
-
-SPY.MACD
+# Compare to buy and hold
+graph <- xts(SPY[,-1], order.by = SPY[,1])
+chart_Series(graph$hodl)
+add_TA(graph$assets, col = 'blue', on=1)
