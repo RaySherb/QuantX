@@ -83,8 +83,8 @@ for(i in 3:nrow(SPY)){
 startPrice <- SPY$OpenPrice[1]
 startPosition <- round(5000/startPrice)-1
 startCash <- 5000 - (startPosition*startPrice)
-SPY <- SPY %>% mutate(assets=(position*Close)+cash,
-                      hodl=(Close*startPosition)+startCash)
+SPY <- SPY %>% mutate(assets=(position*Price)+cash,
+                      hodl=(Price*startPosition)+startCash)
 
 # Compare to buy and hold
 graph <- xts(SPY[,-1], order.by = SPY[,1])
